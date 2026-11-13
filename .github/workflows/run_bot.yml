@@ -38,7 +38,7 @@ jobs:
       - name: Cancel Any Other Running Instances
         env:
           GH_TOKEN: ${{ github.token }}
-          PAT_TOKEN: ${{ secrets.PAT }}
+          PAT_TOKEN: ${{ secrets.PAT || secrets.WORKFLOW_TOKEN || secrets.GH_PAT }}
           CURRENT_RUN_ID: ${{ github.run_id }}
         run: |
           python3 - << 'PYEOF'
@@ -128,7 +128,7 @@ jobs:
       - name: Clear Old Completed Workflow History
         env:
           GH_TOKEN: ${{ github.token }}
-          PAT_TOKEN: ${{ secrets.PAT }}
+          PAT_TOKEN: ${{ secrets.PAT || secrets.WORKFLOW_TOKEN || secrets.GH_PAT }}
           CURRENT_RUN_ID: ${{ github.run_id }}
         run: |
           python3 - << 'PYEOF'
@@ -240,7 +240,7 @@ jobs:
           POLL_INTERVAL_SECONDS: ${{ secrets.POLL_INTERVAL_SECONDS || '7.5' }}
           GIST_TOKEN: ${{ secrets.GIST_TOKEN || secrets.PAT || secrets.GH_TOKEN || secrets.GITHUB_TOKEN }}
           GIST_ID: ${{ secrets.GIST_ID }}
-          PAT: ${{ secrets.PAT || '' }}
+          PAT: ${{ secrets.PAT || secrets.WORKFLOW_TOKEN || secrets.GH_PAT || '' }}
           GH_TOKEN: ${{ github.token }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -358,7 +358,7 @@ jobs:
         if: always() && !cancelled() && steps.validate.outcome == 'success' && steps.run_bot.outputs.bot_exit_code != '1'
         env:
           GH_TOKEN: ${{ github.token }}
-          PAT_TOKEN: ${{ secrets.PAT }}
+          PAT_TOKEN: ${{ secrets.PAT || secrets.WORKFLOW_TOKEN || secrets.GH_PAT }}
           GIST_TOK: ${{ secrets.GIST_TOKEN }}
           CURRENT_RUN_ID: ${{ github.run_id }}
         run: |

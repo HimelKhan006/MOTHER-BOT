@@ -2364,9 +2364,18 @@ class GistStorage:
         return {**GIST_HEADERS, "Authorization": f"Bearer {tok or self.token}"}
 
     async def ensure_gist(self) -> bool:
+        """Finds existing private Gist matching filename, cleans duplicates, or auto-creates one (no GIST_ID needed)."""
         import json
         if not self.candidate_tokens:
             return False
+        if not self.gist_id:
+            try:
+                saved_id = get_bot_setting("gist_id", "")
+                if saved_id:
+                    self.gist_id = saved_id.strip()
+                    self.api_url = f"https://api.github.com/gists/{self.gist_id}"
+            except Exception:
+                pass
         for tok in list(self.candidate_tokens):
             headers = self._auth_headers(tok)
             try:
@@ -2376,15 +2385,32 @@ class GistStorage:
                         if chk.is_success:
                             self.token = tok
                             self.api_url = f"https://api.github.com/gists/{self.gist_id}"
+                            try:
+                                set_bot_setting("gist_id", self.gist_id, from_gist=True)
+                            except Exception:
+                                pass
                             return True
-                    res = await http.get("https://api.github.com/gists", headers=headers, params={"per_page": 50})
+                        elif chk.status_code == 404:
+                            self.gist_id = ""
+                            self.api_url = ""
+                    res = await http.get("https://api.github.com/gists", headers=headers, params={"per_page": 100})
                     if res.is_success:
+                        self.token = tok
                         matching = [g for g in res.json() if self.filename in g.get("files", {})]
                         if matching:
-                            self.token = tok
-                            self.gist_id = matching[0]["id"]
+                            primary = matching[0]
+                            self.gist_id = primary["id"]
                             self.api_url = f"https://api.github.com/gists/{self.gist_id}"
                             set_bot_setting("gist_id", self.gist_id, from_gist=True)
+                            logger.info(f"☁️ Reusing primary existing Mother Bot Gist: {self.gist_id}")
+                            for dup in matching[1:]:
+                                dup_id = dup.get("id")
+                                if dup_id:
+                                    try:
+                                        await http.delete(f"https://api.github.com/gists/{dup_id}", headers=headers)
+                                        logger.info(f"🗑️ Deleted duplicate leftover Gist: {dup_id}")
+                                    except Exception:
+                                        pass
                             return True
                         payload = {
                             "description": "Mother Control Bot — Unified Cloud State",
@@ -2393,10 +2419,10 @@ class GistStorage:
                         }
                         cres = await http.post("https://api.github.com/gists", headers=headers, json=payload)
                         if cres.is_success:
-                            self.token = tok
                             self.gist_id = cres.json()["id"]
                             self.api_url = f"https://api.github.com/gists/{self.gist_id}"
                             set_bot_setting("gist_id", self.gist_id, from_gist=True)
+                            logger.info(f"☁️ Auto-created new private persistent Mother Bot Gist: {self.gist_id}")
                             return True
             except Exception as e:
                 logger.warning(f"Gist ensure error: {e}")
@@ -2461,6 +2487,13 @@ class GistStorage:
                 async with httpx.AsyncClient(timeout=20.0) as http:
                     for tok in list(self.candidate_tokens):
                         res = await http.patch(self.api_url, headers=self._auth_headers(tok), json=payload)
+                        if res.status_code == 404:
+                            self.gist_id = ""
+                            self.api_url = ""
+                            if await self.ensure_gist():
+                                res = await http.patch(self.api_url, headers=self._auth_headers(self.token), json=payload)
+                            else:
+                                break
                         if res.is_success:
                             self.token = tok
                             self._last_sync_time = time.monotonic()
@@ -2477,6 +2510,11 @@ class GistStorage:
             async with httpx.AsyncClient(timeout=20.0) as http:
                 for tok in list(self.candidate_tokens):
                     res = await http.get(self.api_url, headers=self._auth_headers(tok))
+                    if res.status_code == 404:
+                        self.gist_id = ""
+                        self.api_url = ""
+                        if await self.ensure_gist():
+                            res = await http.get(self.api_url, headers=self._auth_headers(self.token))
                     if not res.is_success:
                         continue
                     files = res.json().get("files", {})

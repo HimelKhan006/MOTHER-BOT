@@ -350,6 +350,7 @@ async def main() -> None:
 
     init_db()
     if gist_storage.enabled:
+        await gist_storage.ensure_gist()
         await gist_storage.restore_from_gist()
     thirdwave_client.update_credentials(get_effective_base_url(), get_effective_api_key())
     preload_seen_otps_from_db()
